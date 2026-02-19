@@ -21,6 +21,23 @@ export interface StartServerOptions {
 	tsgoPath?: string;
 }
 
+interface StartupTaskCapableServer extends LanguageServer {
+	registerStartupTask?: (
+		task: () => Promise<void> | void,
+		options?: {
+			name?: string;
+			phase?: 'initialize' | 'initialized';
+			progress?: {
+				title: string;
+				message?: string;
+				cancellable?: boolean;
+				createTimeoutMs?: number;
+				retryIntervalMs?: number;
+			};
+		},
+	) => void;
+}
+
 export function startServer(ts: typeof import('typescript'), options: StartServerOptions = {}) {
 	const connection = createConnection();
 	const server = createServer(connection);
@@ -31,9 +48,25 @@ export function startServer(ts: typeof import('typescript'), options: StartServe
 		preference: options.tsBackend,
 		tsgoPath: options.tsgoPath,
 	});
+	const registerStartupTask = (server as StartupTaskCapableServer).registerStartupTask?.bind(server);
+	if (registerStartupTask) {
+		registerStartupTask(
+			() => warmupTsBackend(connection, tsBackend),
+			{
+				name: 'vue tsgo backend warmup',
+				phase: 'initialize',
+				progress: {
+					title: 'Vue TypeScript Backend',
+					message: 'Starting tsgo backend',
+					createTimeoutMs: 2_000,
+					retryIntervalMs: 50,
+				},
+			},
+		);
+	}
 	let tsBackendWarmupTask: Promise<void> | undefined;
 	const ensureTsBackendWarmup = () => {
-		tsBackendWarmupTask ??= warmupTsBackend(connection, tsBackend);
+		tsBackendWarmupTask ??= warmupTsBackendWithLocalProgress(connection, tsBackend);
 		return tsBackendWarmupTask;
 	};
 
@@ -111,14 +144,18 @@ export function startServer(ts: typeof import('typescript'), options: StartServe
 		};
 
 		connection.console.info(`[vue-ls] active backend: ${tsBackend.mode}`);
-		setTimeout(() => {
-			void ensureTsBackendWarmup();
-		}, 0);
+		if (!registerStartupTask) {
+			setTimeout(() => {
+				void ensureTsBackendWarmup();
+			}, 0);
+		}
 		return result;
 	});
 
 	connection.onInitialized(() => {
-		void ensureTsBackendWarmup();
+		if (!registerStartupTask) {
+			void ensureTsBackendWarmup();
+		}
 		server.initialized();
 	});
 
@@ -136,13 +173,36 @@ async function warmupTsBackend(
 		return;
 	}
 
-	const warmupPromise = tsBackend.warmup()
+	const warmupSucceeded = await tsBackend.warmup()
 		.then(() => true)
 		.catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : String(error);
 			connection.console.warn(`[vue-ls] tsgo backend warmup failed: ${message}`);
 			return false;
 		});
+	if (!warmupSucceeded) {
+		return;
+	}
+
+	try {
+		const readyForHover = await tsBackend.awaitReadyForHover(8_000);
+		if (readyForHover) {
+			connection.console.info('[vue-ls] tsgo backend ready');
+			return;
+		}
+		connection.console.info('[vue-ls] tsgo backend warm; hover readiness timed out');
+	}
+	catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		connection.console.warn(`[vue-ls] tsgo backend readiness wait failed: ${message}`);
+	}
+
+}
+
+async function warmupTsBackendWithLocalProgress(
+	connection: ReturnType<typeof createConnection>,
+	tsBackend: ReturnType<typeof createTsBackendClient>,
+) {
 	const progressPromise = createProgressWithRetry(connection, 2_000)
 		.then(progress => {
 			if (!progress) {
@@ -157,25 +217,13 @@ async function warmupTsBackend(
 		});
 
 	try {
-		const readyForHover = await tsBackend.awaitReadyForHover(8_000);
-		if (readyForHover) {
-			connection.console.info('[vue-ls] tsgo backend ready');
-			return;
-		}
-
-		const warmupCompleted = await warmupPromise;
-		if (warmupCompleted) {
-			connection.console.info('[vue-ls] tsgo backend warm; hover readiness timed out');
-		}
-	}
-	catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		connection.console.warn(`[vue-ls] tsgo backend readiness wait failed: ${message}`);
+		await warmupTsBackend(connection, tsBackend);
 	}
 	finally {
 		void progressPromise.then(progress => {
 			progress?.done();
 		});
+	}
 }
 
 async function createProgressWithRetry(
@@ -198,7 +246,6 @@ async function createProgressWithRetry(
 
 function sleep(ms: number) {
 	return new Promise<void>(resolve => setTimeout(resolve, ms));
-}
 }
 
 function createProjectLanguageService(
