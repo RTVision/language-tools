@@ -2,7 +2,7 @@ import type { Hover, LanguageServicePlugin, MarkupContent } from '@volar/languag
 import { resolveEmbeddedCode } from '../utils';
 
 export function create(
-	{ getQuickInfoAtPosition }: import('@vue/typescript-plugin/lib/requests').Requests,
+	{ getQuickInfoAtPosition, notifyHoverRequested }: import('@vue/typescript-plugin/lib/requests').Requests,
 ): LanguageServicePlugin {
 	return {
 		name: 'vue-script-hover',
@@ -22,6 +22,7 @@ export function create(
 					const offset = document.offsetAt(position);
 
 					for (const [sourceOffset] of map.toSourceLocation(offset)) {
+						notifyHoverRequested?.();
 						const quickInfo = await getQuickInfoAtPosition(
 							info.root.fileName,
 							sourceDocument.positionAt(sourceOffset),

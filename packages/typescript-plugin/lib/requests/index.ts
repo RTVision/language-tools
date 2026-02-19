@@ -53,6 +53,7 @@ export interface Requests {
 		fileName: string,
 		position: ts.LineAndCharacter,
 	): Response<string>;
+	notifyHoverRequested?(): Response<void>;
 	getAutoImportSuggestions(
 		fileName: string,
 		position: number,

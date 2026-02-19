@@ -1,6 +1,6 @@
-import type { LanguageServer } from '@volar/language-server';
-import { createLanguageServiceEnvironment } from '@volar/language-server/lib/project/simpleProject';
-import { createConnection, createServer } from '@volar/language-server/node';
+import type { LanguageServer } from '@volar/language-server/index.js';
+import { createLanguageServiceEnvironment } from '@volar/language-server/lib/project/simpleProject.js';
+import { createConnection, createServer } from '@volar/language-server/node.js';
 import {
 	createLanguage,
 	createParsedCommandLine,
@@ -21,23 +21,6 @@ export interface StartServerOptions {
 	tsgoPath?: string;
 }
 
-interface StartupTaskCapableServer extends LanguageServer {
-	registerStartupTask?: (
-		task: () => Promise<void> | void,
-		options?: {
-			name?: string;
-			phase?: 'initialize' | 'initialized';
-			progress?: {
-				title: string;
-				message?: string;
-				cancellable?: boolean;
-				createTimeoutMs?: number;
-				retryIntervalMs?: number;
-			};
-		},
-	) => void;
-}
-
 export function startServer(ts: typeof import('typescript'), options: StartServerOptions = {}) {
 	const connection = createConnection();
 	const server = createServer(connection);
@@ -48,27 +31,19 @@ export function startServer(ts: typeof import('typescript'), options: StartServe
 		preference: options.tsBackend,
 		tsgoPath: options.tsgoPath,
 	});
-	const registerStartupTask = (server as StartupTaskCapableServer).registerStartupTask?.bind(server);
-	if (registerStartupTask) {
-		registerStartupTask(
-			() => warmupTsBackend(connection, tsBackend),
-			{
-				name: 'vue tsgo backend warmup',
-				phase: 'initialize',
-				progress: {
-					title: 'Vue TypeScript Backend',
-					message: 'Starting tsgo backend',
-					createTimeoutMs: 2_000,
-					retryIntervalMs: 50,
-				},
+	server.registerStartupTask(
+		() => warmupTsBackend(connection, tsBackend),
+		{
+			name: 'vue tsgo backend warmup',
+			phase: 'initialize',
+			progress: {
+				title: 'Vue TypeScript Backend',
+				message: 'Starting tsgo backend',
+				createTimeoutMs: 2_000,
+				retryIntervalMs: 50,
 			},
-		);
-	}
-	let tsBackendWarmupTask: Promise<void> | undefined;
-	const ensureTsBackendWarmup = () => {
-		tsBackendWarmupTask ??= warmupTsBackendWithLocalProgress(connection, tsBackend);
-		return tsBackendWarmupTask;
-	};
+		},
+	);
 
 	connection.listen();
 
@@ -144,18 +119,10 @@ export function startServer(ts: typeof import('typescript'), options: StartServe
 		};
 
 		connection.console.info(`[vue-ls] active backend: ${tsBackend.mode}`);
-		if (!registerStartupTask) {
-			setTimeout(() => {
-				void ensureTsBackendWarmup();
-			}, 0);
-		}
 		return result;
 	});
 
 	connection.onInitialized(() => {
-		if (!registerStartupTask) {
-			void ensureTsBackendWarmup();
-		}
 		server.initialized();
 	});
 
@@ -197,55 +164,6 @@ async function warmupTsBackend(
 		connection.console.warn(`[vue-ls] tsgo backend readiness wait failed: ${message}`);
 	}
 
-}
-
-async function warmupTsBackendWithLocalProgress(
-	connection: ReturnType<typeof createConnection>,
-	tsBackend: ReturnType<typeof createTsBackendClient>,
-) {
-	const progressPromise = createProgressWithRetry(connection, 2_000)
-		.then(progress => {
-			if (!progress) {
-				return undefined;
-			}
-			progress.begin('Vue TypeScript Backend', undefined, 'Starting tsgo backend');
-			return progress;
-		})
-		.catch(() => {
-			// Clients may decline or not support server-driven progress.
-			return undefined;
-		});
-
-	try {
-		await warmupTsBackend(connection, tsBackend);
-	}
-	finally {
-		void progressPromise.then(progress => {
-			progress?.done();
-		});
-	}
-}
-
-async function createProgressWithRetry(
-	connection: ReturnType<typeof createConnection>,
-	maxWaitMs: number,
-) {
-	const deadline = Date.now() + Math.max(0, maxWaitMs);
-	while (true) {
-		try {
-			return await connection.window.createWorkDoneProgress();
-		}
-		catch {
-			if (Date.now() >= deadline) {
-				return undefined;
-			}
-			await sleep(50);
-		}
-	}
-}
-
-function sleep(ms: number) {
-	return new Promise<void>(resolve => setTimeout(resolve, ms));
 }
 
 function createProjectLanguageService(
