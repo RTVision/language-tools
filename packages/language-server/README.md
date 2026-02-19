@@ -26,11 +26,24 @@ vue-language-server --version
 
 # Specify TypeScript SDK path
 vue-language-server --stdio --tsdk=/path/to/typescript/lib
+
+# Use tsgo-backed request bridge (experimental)
+vue-language-server --stdio --ts-backend=tsgo-lsp --tsgo=/path/to/tsgo
 ```
 
 ### `--tsdk` Parameter
 
 The `--tsdk` parameter is used to specify the path to the TypeScript SDK. This is useful when you need to use a specific version of TypeScript from your project instead of the globally installed version. The path should point to TypeScript's `lib` directory.
+
+### TypeScript Backend Selection
+
+Use `--ts-backend=tsserver|tsgo-lsp|auto` to select the request backend used by the server:
+
+- `tsserver` (default): current bridge through `tsserver/request` notifications
+- `tsgo-lsp`: start a `tsgo --lsp` sidecar and use an internal tsserver IPC fallback for Vue plugin-specific requests
+- `auto`: prefer `tsgo` when available, otherwise fallback to `tsserver`
+
+Use `--tsgo=/path/to/tsgo` (or `VUE_LANGUAGE_SERVER_TSGO_PATH`) to override the `tsgo` executable path.
 
 ## Editor Integration
 
@@ -67,11 +80,11 @@ import * as ts from 'typescript';
 startServer(ts);
 ```
 
-> **Note**: `startServer` creates a stdio-based LSP connection and communicates with `@vue/typescript-plugin` through `tsserver/request` and `tsserver/response` notifications.
+> **Note**: `startServer` creates a stdio-based LSP connection. In `tsserver` backend mode it communicates with `@vue/typescript-plugin` through `tsserver/request` and `tsserver/response` notifications; in `tsgo-lsp` mode it uses local `tsgo` + tsserver sidecars.
 
 ## Collaboration with TypeScript Plugin
 
-This language server communicates with `@vue/typescript-plugin` through custom `tsserver/request` and `tsserver/response` notifications. This architecture allows the language server to leverage the capabilities of the TypeScript language service for complex type inference and code analysis.
+This language server can communicate with `@vue/typescript-plugin` through custom `tsserver/request` and `tsserver/response` notifications, or through an internal tsserver IPC sidecar when `--ts-backend=tsgo-lsp` is selected.
 
 ## Related Packages
 

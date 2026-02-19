@@ -23,6 +23,7 @@ import { create as createVueExtractFilePlugin } from './lib/plugins/vue-extract-
 import { create as createVueFormatPerBlockPlugin } from './lib/plugins/vue-format-per-block';
 import { create as createVueInlayHintsPlugin } from './lib/plugins/vue-inlayhints';
 import { create as createVueMissingPropsHintsPlugin } from './lib/plugins/vue-missing-props-hints';
+import { create as createVueScriptHoverPlugin } from './lib/plugins/vue-script-hover';
 import { create as createVueScopedClassLinksPlugin } from './lib/plugins/vue-scoped-class-links';
 import { create as createVueSfcPlugin } from './lib/plugins/vue-sfc';
 import { create as createVueSuggestDefineAssignmentPlugin } from './lib/plugins/vue-suggest-define-assignment';
@@ -72,6 +73,7 @@ export function createVueLanguageServicePlugins(
 		createVueDocumentHighlightsPlugin(client),
 		createVueExtractFilePlugin(ts, client),
 		createVueMissingPropsHintsPlugin(client),
+		createVueScriptHoverPlugin(client),
 		createVueTemplatePlugin(ts, 'html', client),
 		createVueTemplatePlugin(ts, 'jade', client),
 		createVueTwoslashQueriesPlugin(client),

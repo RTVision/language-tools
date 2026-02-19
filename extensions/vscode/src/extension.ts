@@ -153,6 +153,14 @@ export = defineExtension(() => {
 
 function launch(serverPath: string, tsdk: string) {
 	const args = ['--tsdk=' + tsdk];
+	const tsBackend = process.env.VUE_LANGUAGE_SERVER_TS_BACKEND;
+	const tsgoPath = process.env.VUE_LANGUAGE_SERVER_TSGO_PATH;
+	if (tsBackend) {
+		args.push('--ts-backend=' + tsBackend);
+	}
+	if (tsgoPath) {
+		args.push('--tsgo=' + tsgoPath);
+	}
 	const client = new lsp.LanguageClient(
 		'vue',
 		'Vue',
